@@ -4,10 +4,14 @@ const CustomError = require('../lib/Error');
 const moment = require("moment");
 const AuditLogs = require("../db/models/AuditLogs");
 const router = express.Router();
-
+const auth = require("../lib/auth")();
 /* GET users listing. */
 
-router.post('/', async (req, res) => {
+router.all("*", auth.authenticate(), (req, res, next) => {
+  next();
+});
+
+router.post('/', auth.checkRoles("auditlogs_view"), async (req, res) => {
   try{
 
     let body = req.body;
