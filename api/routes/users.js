@@ -10,19 +10,7 @@ const config = require("../config");
 const Roles = require('../db/models/Roles');
 const UserRoles = require('../db/models/UserRoles');
 var router = express.Router();
-
-/* GET users listing. */
-router.get('/', async function (req, res, next) {
-  try{
-    let users = await Users.find({});
-
-    res.json(Response.successResponse(users));
-  }catch(err){
-    let errorResponse = Response.errorResponse(err);
-    res.status(errorResponse.code).json(errorResponse);
-  }
-} 
-);
+const auth = require("../lib/auth")();
 
 router.post("/register", async (req, res) => {
   let body = req.body;
@@ -76,8 +64,58 @@ router.post("/register", async (req, res) => {
   }
 });
 
+router.post("/auth", async (req, res) =>{
+  try{
+    let { email, password } = req.body;
+    
+    Users.validateFieldsBeforeAuth(email,password);
 
-router.post("/add", async (req, res) => {
+    let user = await Users.findOne({email});
+
+    if(!user) throw new CustomError(HTTP_CODES.UNAUTHORIZED, "Validation Error", "email or password wrong");
+    
+    if(!user.validPassword(password)) throw new CustomError(HTTP_CODES.UNAUTHORIZED, "Validation Error", "email or password wrong");
+
+    let payload ={
+      id: user._id,
+      exp: parseInt(Date.now() / 1000) * config.JWT.EXPIRE_TIME
+    }
+
+    let token = jwt.encode(payload, config.JWT.SECRET);
+    let userData ={
+      _id: user._id,
+      first_name: user.first_name,
+      last_name: user.last_name
+    }
+    res.json(Response.successResponse({token, user: userData}));
+
+
+  }catch(err){
+    let errorResponse = Response.errorResponse(err);
+    res.status(errorResponse.code).json(errorResponse);
+  }
+})
+
+router.all("*", auth.authenticate(), (req, res, next) => {
+  next();
+});
+
+/* GET users listing. */
+router.get('/', auth.checkRoles("user_view"), async function (req, res, next) {
+  try{
+    let users = await Users.find({});
+
+    res.json(Response.successResponse(users));
+  }catch(err){
+    let errorResponse = Response.errorResponse(err);
+    res.status(errorResponse.code).json(errorResponse);
+  }
+} 
+);
+
+
+
+router.post("/add", auth.checkRoles("user_add"), async (req, res) => {
   let body = req.body;
   try{
 
@@ -126,7 +164,7 @@ router.post("/add", async (req, res) => {
   }
 });
 
-router.post("/update", async (req, res) => {
+router.post("/update", auth.checkRoles("user_update"), async (req, res) => {
   let body = req.body;
   let updates = {};
   try{
@@ -174,7 +212,7 @@ router.post("/update", async (req, res) => {
   }
 });
 
-router.post("/delete", async (req, res) => {
+router.post("/delete", auth.checkRoles("user_delete"), async (req, res) => {
   let body = req.body;
   try{
     if(!body._id) throw new CustomError(Enum.HTTP_CODES.BAD_REQUEST, "Validation Error!", "_id field must be filled")
@@ -191,36 +229,6 @@ router.post("/delete", async (req, res) => {
 
 });
 
-router.post("/auth", async (req, res) =>{
-  try{
-    let { email, password } = req.body;
-    
-    Users.validateFieldsBeforeAuth(email,password);
 
-    let user = await Users.findOne({email});
-
-    if(!user) throw new CustomError(HTTP_CODES.UNAUTHORIZED, "Validation Error", "email or password wrong");
-    
-    if(!user.validPassword(password)) throw new CustomError(HTTP_CODES.UNAUTHORIZED, "Validation Error", "email or password wrong");
-
-    let payload ={
-      id: user._id,
-      exp: parseInt(Date.now() / 1000) * config.JWT.EXPIRE_TIME
-    }
-
-    let token = jwt.encode(payload, config.JWT.SECRET);
-    let userData ={
-      _id: user._id,
-      first_name: user.first_name,
-      last_name: user.last_name
-    }
-    res.json(Response.successResponse({token, user: userData}));
-
-
-  }catch(err){
-    let errorResponse = Response.errorResponse(err);
-    res.status(errorResponse.code).json(errorResponse);
-  }
-})
 
 module.exports = router;
